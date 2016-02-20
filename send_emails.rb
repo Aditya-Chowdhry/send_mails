@@ -1,82 +1,86 @@
 require 'mail'
 require 'roo'
-puts "enter file name:"
-file_name= gets.chomp()
-puts file_name
+require 'highline/import'
 
-xlsx = Roo::Spreadsheet.open("./#{file_name}.xlsx")
+VALID_EMAIL_REGEX = /\A[\w+\-.]+@[a-z\d\-]+(\.[a-z]+)*\.[a-z]+\z/i
+
+#email:foo@bar.com
+#file_name:test
+
+details=Hash.new
+details["email"]=ARGV[0].split(":")[1]
+ans=(VALID_EMAIL_REGEX =~ (details["email"]))
+if ans.nil?
+  puts "Entered email ID is not valid. Are you using the correct format?"
+  puts "Format=> ruby send_emails.rb email:foo@bar.com file_name:/home/foo/Desktop/test"
+  exit
+end
+
+details["file_name"]=ARGV[1].split(":")[1]
+
+if !(File.exist? details["file_name"]+".xlsx")
+  puts "File not found. Are you using the full path to file?"
+  puts "Format=> ruby send_emails.rb email:foo@bar.com file_name:/home/foo/Desktop/test"
+  exit
+end
+
+password = ask("Enter password: ") { |q| q.echo = false }
+
+puts "Filename:" + details["file_name"]
+
+xlsx = Roo::Spreadsheet.open("#{details["file_name"]}.xlsx")
 sheet=xlsx.sheet(0)
 
+puts "Document info:"
 puts xlsx.info
+puts "Sending mails:"
 Mail.defaults do
   delivery_method :smtp, { :address    => "smtp.gmail.com",
                           :port       => 587,
-                          #:domain     => 'gmail.com',
-                          :user_name  => ENV['EMAIL_ID'],
-                          :password   => ENV['GMAIL_PASSWORD'],
+                          :user_name  => details["email"],
+                          :password   => password,
                           :authentication => :plain,
                           :enable_starttls_auto => true
                         }
 end
 
-
-
+count=1
 sheet.each(full_name: 'Full Name:', email: 'Email:') do |hash|
-  puts hash.inspect
+  
+  # => { id: 1, name: 'John Smith' }
+
   if hash[:full_name]!='Full Name:'
-  mail = Mail.new do
-    from     'user_name@gmail.com'
-    to       hash[:email]
-    subject  'Workshop on basics of GIT/GITHUB'
-  #  body     'Hey there!'
-    #add_file :filename => 'somefile.png', :content => File.read('/somefile.png')
-  end
+    puts "#{count}. #{hash[:full_name]} (#{hash[:email]})"
+    mail = Mail.new do
+      from     details["email"]
+      to       hash[:email]
+      subject  'Your Subject here'
+    end
 
-  html_part = Mail::Part.new do
-    content_type 'text/html; charset=UTF-8'
-    body "<center>
-              <h2>Basics of GIT/GITHUB</h2>
+    html_part = Mail::Part.new do
+      content_type 'text/html; charset=UTF-8'
+      body "<center>
+              <h2>Your message here!/h2>
               <br>
-              <img src=\"http://s19.postimg.org/6rc7kco8j/130712_git_github_topdenota1_compressed_1.jpg\"/>
             </center>
-            <p>Hi #{hash[:full_name]}, thank you for registering!</p>
-            <p>To get an idea what is Git or GitHub you can go through the following links:</p>
-            <ul>
-              <li>
-                <a href=\"https://www.quora.com/What-is-git-and-why-should-I-use-it\">What is git and why should we use it?<a>
-              </li>
-              <li>
-                <a href=\"https://guides.github.com/activities/hello-world/\">Beginners guide for Github.</a>
-              </li>
-              <li>
-                <a href=\"http://stackoverflow.com/questions/13321556/difference-between-git-and-github\">Difference-between-git-and-github</a>
-              </li>
-              <li>
-                <a href=\"https://try.github.io/levels/1/challenges/1\">Practice GIT online</a>
-              </li>
-            </ul>
-            <br>
-            <strong>Make an account on <a href=\"www.github.com\">Github</a> before coming to the session.</strong>
-            <p>
-            <strong>What you need to bring?</strong><br>If you have a laptop and your own internet connection then bring, otherwise not necessary.</p>
-            <br>
-            <p>
-              <strong>Time: 2:00pm onwards</strong>
-              <br>
-              <strong>Date: 29th January,2016</strong>
-              <br>
-              <strong>Venue: BVS Auditorium</strong>
+            <p>Hi #{hash[:full_name]}!</p>
+         "
+    end
 
-              <center>
-                <i>
-                  <strong>Be on time. Keep Coding :)</strong>
-                </i>
-              </center>
-             </p>"
+    mail.html_part = html_part
+  
+
+    begin
+      mail.deliver!
+    rescue => e
+      puts "Unable to send email because #{e.message}"
+      puts "Cannot continue further."
+      exit
+    end
+    count=count+1
   end
 
-  mail.html_part = html_part
-
-  end
 
 end
+
+puts "All mails sent!. Total mails: #{count-1}"
